@@ -68,12 +68,15 @@ my $max_regulation_db_id = 0;
 #analyze_block("MS-239742");
 #analyze_block("MS-239744");
 #analyze_block("MS-241951");
+#analyze_block("MS-471900"); // this has trailing whitespace in input
 analyze_blocks();
 
 print_log("%10i total car spaces", $total_cars);
 print_log("%10i rows in block_dimension", $max_block_db_id);
 print_log("%10i rows in regulation_dimension", $max_regulation_db_id);
 
+
+sub  trim { my $s = shift; $s =~ s/^\s+|\s+$//g; return $s };
 
 #
 # Load sign records from CSV file.
@@ -91,10 +94,11 @@ sub load_signs {
 		$line =~ s/^\xef\xbb\xbf//;  # remove BOM
 		$line =~ s/[\r\n]+$//;
 		my ($boro, $order, $seq, $ft, $arrow, $desc) = split /,/, $line;
-		my $block = $boro.$order;
+		next if $boro eq "SRP_Boro";
+		my $block = trim($boro.$order);
 		$seq = int $seq;
-		$arrow =~ s/ +//g;
-		$desc =~ s/ +$//g;
+		$arrow = trim($arrow);
+		$desc = trim($desc);
 		$total_count++;
 		$boro_count{$boro}++;
 		$desc_count{$desc}++;
@@ -132,13 +136,10 @@ sub load_locations {
 		$line =~ s/[\r\n]+$//;
 		my ($boro, $order, $street,
 				$from, $to, $side) = split /,/, $line;
-		my $block = $boro.$order;
-		$street =~ s/ +/ /g;
-		$from =~ s/ +/ /g;
-		$to =~ s/ +/ /g;
-		$block_to_street{$block} = $street;
-		$block_to_from{$block} = $from;
-		$block_to_to{$block} = $to;
+		my $block = trim($boro.$order);
+		$block_to_street{$block} = trim($street);
+		$block_to_from{$block} = trim($from);
+		$block_to_to{$block} = trim($to);
 		$block_to_side{$block} = $side;
 	}
 	close $locations_fh;
@@ -406,8 +407,12 @@ sub parse_time {
 	my $t0 = 0;
 	my $t1 = 24 * 60;
 	my $time_regex = "((\\d\\d?)(:(\\d\\d))? *([AP]M)?|NOON|MIDNIGHT)";
+	if ($desc eq "11:30AM-1 M") {
+		$desc = "11:30AM-1PM"
+	}
 
 	if ($desc =~ /^$time_regex *(-|TO|TO-) *$time_regex */gci) {
+        # print_log("parse_time %s", $desc);
 		if ($7 eq "NOON") {
 			$t1 = 12 * 60;
 		} elsif ($7 eq "MIDNIGHT") {
@@ -574,26 +579,28 @@ sub analyze_block {
 	# copy signs for this block to @data for convenience
 	my @data;
 	foreach my $seq (keys %{$block_to_sign{$id}}) {
+		print_log("DEBUG %s", $seq) if $VERBOSE;
 		my ($ft, $arrow, $desc) = split /,/, $block_to_sign{$id}{$seq};
 		$ft = int $ft;
+		print_log("DEBUG %10i %10i %s %s", $seq, $ft, $arrow, $desc) if $VERBOSE;
 		push @data, [$ft, $seq, $arrow, $desc];
 	}
 	# sort by position (ft) and then by sequence
 	@data = sort { ($a->[0] <=> $b->[0]) || ($a->[1] <=> $b->[1]) } @data;
 
 	for (my $z = 0; $z < scalar @data; $z++) {
-		print_log("%10i %10i %5s %s", @{$data[$z]}) if $VERBOSE;
+		print_log("data[%d] %10i %10i %5s %s", $z, @{$data[$z]}) if $VERBOSE;
 		$data[$z]->[1] = $sign_meaning{$data[$z]->[3]};
 		$data[$z]->[3] = $sign_details{$data[$z]->[3]};
 	}
 
 	# data now contains: ft, meaning, arrow, details
-	#print_log("    =>");
-	#for (my $z = 0; $z < scalar @data; $z++) {
-	#	print_log("    %10i %-20s %5s %s",
-	#	       $data[$z]->[0], $sign_type_name[$data[$z]->[1]],
-	#	       $data[$z]->[2], $data[$z]->[3];
-	#}
+	# print_log("    =>");
+	# for (my $z = 0; $z < scalar @data; $z++) {
+	#     print_log("    %10i %-20s %5s %s",
+	#            $data[$z]->[0], $sign_type_name[$data[$z]->[1]],
+	#            $data[$z]->[2], $data[$z]->[3]);
+	# }
 
 	if ($VERBOSE and ($data[0]->[0] != 0 or $data[0]->[1] != $CURB_LINE)) {
 		print_log("Warning: block %s starts with %i " .
@@ -605,13 +612,13 @@ sub analyze_block {
 			"instead of Curb Line",
 			$id, $data[-1]->[0], $sign_type_name[$data[-1]->[1]]);
 	}
-
+    
 	my $block_length = $data[-1]->[0];
 	print_log("Length: %i ft", $block_length) if $VERBOSE;
 
 	compute_arrow_directions(\@data);
 	if ($VERBOSE) {
-		print_log("=>");
+		print_log("compute_arrow_directions=>");
 		for (my $z = 0; $z < scalar @data; $z++) {
 			print_log("%10i %-20s %5s %s",
 			       $data[$z]->[0], $sign_type_name[$data[$z]->[1]],
@@ -667,7 +674,7 @@ sub analyze_block {
 	}
 
 	if ($VERBOSE) {
-		print_log("=>");
+		print_log("uniq_segments =>");
 		for (my $z = 0; $z < scalar @uniq_segments; $z++) {
 			print_log(" [%3i] %5i-%5i %-20s %s",
 			       $z, $uniq_segments[$z]->[0],

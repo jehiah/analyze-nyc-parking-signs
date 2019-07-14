@@ -1,0 +1,7 @@
+locations.csv
+signs.csv
+block_dimension
+parking_fact
+regulation_dimension
+regulation_time_dimension
+*.log
