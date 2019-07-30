@@ -58,6 +58,7 @@ open_output_files();
 
 my $total_cars;
 my %block_db_id;
+my %cars_by_borough;
 my $max_block_db_id = 0;
 my %regulation_db_id;
 my $max_regulation_db_id = 0;
@@ -68,12 +69,21 @@ my $max_regulation_db_id = 0;
 #analyze_block("MS-239742");
 #analyze_block("MS-239744");
 #analyze_block("MS-241951");
-#analyze_block("MS-471900"); // this has trailing whitespace in input
+# analyze_block("MS-471900"); # this has trailing whitespace in input
+# analyze_block("MS-316546"); # 43 N
+# analyze_block("MS-472470"); # 43 S
+
+
 analyze_blocks();
 
 print_log("%10i total car spaces", $total_cars);
 print_log("%10i rows in block_dimension", $max_block_db_id);
 print_log("%10i rows in regulation_dimension", $max_regulation_db_id);
+print_log("%10i cars manhattan", $cars_by_borough{"M"});
+print_log("%10i cars broklyn", $cars_by_borough{"K"});
+print_log("%10i cars bronx", $cars_by_borough{"B"});
+print_log("%10i cars queens", $cars_by_borough{"Q"});
+print_log("%10i cars Staten Island", $cars_by_borough{"S"});
 
 
 sub  trim { my $s = shift; $s =~ s/^\s+|\s+$//g; return $s };
@@ -95,6 +105,7 @@ sub load_signs {
 		$line =~ s/[\r\n]+$//;
 		my ($boro, $order, $seq, $ft, $arrow, $desc) = split /,/, $line;
 		next if $boro eq "SRP_Boro";
+		$boro = trim($boro);
 		my $block = trim($boro.$order);
 		$seq = int $seq;
 		$arrow = trim($arrow);
@@ -140,7 +151,7 @@ sub load_locations {
 		$block_to_street{$block} = trim($street);
 		$block_to_from{$block} = trim($from);
 		$block_to_to{$block} = trim($to);
-		$block_to_side{$block} = $side;
+		$block_to_side{$block} = trim($side);
 	}
 	close $locations_fh;
 	print_log("Number of block ids with locations: %10i",
@@ -794,6 +805,7 @@ sub output_segment {
 	       $cars * ($hours_by_type[$FREE_PARKING] +
 			       $hours_by_type[$METER_PARKING]) / (7 * 24.0);
 	$total_cars += $cars;
+	$cars_by_borough{substr $block, 0, 1} += $cars;
 
 	print_log("* %s %i +%i (%i cars) %s", $block, $start, $length,
 			$cars, (join ",",
